@@ -11,6 +11,9 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+*.db
+.pytest_cache/
+.ruff_cache/
 
 # Terraform
 .terraform/
