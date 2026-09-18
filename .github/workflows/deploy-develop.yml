@@ -1,0 +1,76 @@
+name: Deploy Develop
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  id-token: write # OIDCでAWS一時クレデンシャルを取得するために必要
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_ENV_DIR: infra/environments/develop
+
+jobs:
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    outputs:
+      cluster_name: ${{ steps.tf_output.outputs.cluster_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_ENV_DIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}"
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_ENV_DIR }}
+        run: |
+          terraform apply -auto-approve \
+            -var="tf_state_bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -var="tf_lock_table=${{ vars.TF_LOCK_TABLE }}"
+
+      - name: Export Terraform outputs
+        id: tf_output
+        working-directory: ${{ env.TF_ENV_DIR }}
+        run: |
+          echo "cluster_name=$(terraform output -raw cluster_name)" >> "$GITHUB_OUTPUT"
+
+  deploy-app:
+    name: Deploy application manifests
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ needs.terraform.outputs.cluster_name }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -k infra/k8s/develop
+          kubectl rollout status deployment/backend -n develop --timeout=300s
+          kubectl rollout status deployment/frontend -n develop --timeout=300s

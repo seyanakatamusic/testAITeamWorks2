@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: develop
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          # CIがビルド時にECRイメージタグへ書き換える（kustomize edit set image）
+          image: backend:develop
+          ports:
+            - containerPort: 8000
+          envFrom:
+            # DB接続情報はAWS Secrets ManagerからSync済みのK8s Secretを参照する
+            # （external-secrets等でのSync手順はinfra/README.mdに記載）。
+            - secretRef:
+                name: backend-db-credentials
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

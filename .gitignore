@@ -18,6 +18,8 @@ venv/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+backend.hcl
+!backend.hcl.example
 crash.log
 
 # Env / secrets

@@ -1,0 +1,5 @@
+# 機密情報を含まない環境値の例。実際の値は terraform.tfvars にコピーして使う
+# （terraform.tfvars自体は.gitignoreで除外）。
+
+tf_state_bucket = "attendance-saas-tfstate-production-REPLACE_ME"
+tf_lock_table   = "attendance-saas-tfstate-lock-production"
